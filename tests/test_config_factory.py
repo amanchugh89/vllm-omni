@@ -663,6 +663,42 @@ stages:
         assert deploy.stages[0].compilation_config == {"pass_config": {"fuse_allreduce_rms": False}}
         assert "compilation_config" not in deploy.stages[0].engine_extras
 
+    def test_explicit_engine_extras_survive_deploy_parse(self):
+        fake_config = {
+            "stages": [
+                {
+                    "stage_id": 0,
+                    "max_num_seqs": 4,
+                    "engine_extras": {
+                        "hf_overrides": {
+                            "voxcpm2_runtime_config": {
+                                "enable_unified_decode_graph": True,
+                            },
+                        },
+                    },
+                },
+            ],
+        }
+
+        with patch("vllm_omni.config.stage_config.resolve_deploy_yaml", return_value=fake_config):
+            deploy = load_deploy_config("dummy.yaml")
+
+        assert deploy.stages[0].engine_extras["hf_overrides"]["voxcpm2_runtime_config"] == {
+            "enable_unified_decode_graph": True,
+        }
+        assert deploy.stages[0].max_num_seqs == 4
+
+    def test_voxcpm2_deploy_runtime_config_reaches_engine_args(self):
+        deploy_path = Path(__file__).parent.parent / "vllm_omni" / "deploy" / "voxcpm2.yaml"
+        deploy = load_deploy_config(deploy_path)
+        pipeline = _PIPELINE_REGISTRY["voxcpm2"]
+        stages = merge_pipeline_deploy(pipeline, deploy)
+
+        runtime_config = stages[0].yaml_engine_args["hf_overrides"]["voxcpm2_runtime_config"]
+        assert runtime_config["enable_unified_decode_graph"] is True
+        assert runtime_config["enable_decode_tail_graph"] is True
+        assert runtime_config["unified_decode_graph_max_batch_size"] == 1
+
     def test_merge_pipeline_deploy(self):
         pipeline = _PIPELINE_REGISTRY["qwen3_omni_moe"]
         deploy_path = Path(__file__).parent.parent / "vllm_omni" / "deploy" / "qwen3_omni_moe.yaml"
