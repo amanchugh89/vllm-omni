@@ -6,6 +6,7 @@ Directly inherits from vLLM's AsyncMPClient to reuse EngineCore architecture.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import os
 import socket
@@ -15,7 +16,7 @@ from urllib.parse import urlparse
 import vllm.v1.engine as _vllm_engine_module
 import vllm.v1.engine.core_client as _vllm_core_client_module
 from vllm.logger import init_logger
-from vllm.v1.engine import EngineCoreRequest
+from vllm.v1.engine import EngineCoreOutputs, EngineCoreRequest
 from vllm.v1.engine.core_client import AsyncMPClient, DPLBAsyncMPClient
 from vllm.v1.engine.exceptions import EngineDeadError
 
@@ -431,6 +432,25 @@ class StageEngineCoreClientBase(StageClientBase):
             args=args,
             kwargs=kwargs,
         )
+
+    def get_output_nowait(self) -> EngineCoreOutputs | None:
+        """Non-blocking counterpart to ``get_output_async``.
+
+        Returns an already-buffered ``EngineCoreOutputs`` if one is
+        immediately available, else ``None``. The orchestrator uses this to
+        drain steps a replica has already produced within a single polling
+        pass, instead of one per pass, without blocking on an empty queue.
+        Mirrors the exception handling of ``get_output_async``.
+        """
+        self._ensure_output_queue_task()
+        assert self.outputs_queue is not None
+        try:
+            outputs = self.outputs_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
+        if isinstance(outputs, Exception):
+            raise self._format_exception(outputs) from None
+        return outputs
 
 
 class StageEngineCoreClient(StageEngineCoreClientBase, AsyncMPClient):

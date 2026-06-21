@@ -1081,6 +1081,33 @@ class StagePool:
             )
             raise
 
+    def poll_llm_raw_output_nowait(self, replica_id: int) -> EngineCoreOutputs | None:
+        """Non-blocking variant of ``poll_llm_raw_output``.
+
+        Returns a raw output the replica has already buffered, or ``None`` if
+        nothing is immediately available. Lets the orchestration loop drain a
+        replica's backlog within one sweep without paying the blocking-poll
+        timeout on an empty queue.
+        """
+        raw_client = self.clients[replica_id]
+        if raw_client is None:
+            return None
+        client = cast(StagePoolLLMClient, raw_client)
+        try:
+            outputs = client.get_output_nowait()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "[StagePool] get_output_nowait failed for stage-%s replica-%s",
+                self.stage_id,
+                replica_id,
+            )
+            raise
+        if outputs is None or not outputs.outputs:
+            return None
+        return outputs
+
     def poll_diffusion_output(self, replica_id: int) -> Any | None:
         """Drain one ready diffusion output from the given replica if present."""
         raw_client = self.clients[replica_id]
