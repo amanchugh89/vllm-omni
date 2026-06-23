@@ -19,6 +19,14 @@ def build_dac_codec() -> nn.Module:
     Returns the model on CPU in eval mode -- caller is responsible for
     loading weights and moving to the target device.
     """
+    import importlib.util
+
+    if importlib.util.find_spec("fish_speech") is None:
+        raise ImportError(
+            "Fish Speech S2 Pro requires `fish-speech` (DAC codec). "
+            "Install it with: pip install fish-speech"
+        )
+
     from fish_speech.models.dac.modded_dac import (
         DAC,
         ModelArgs,
